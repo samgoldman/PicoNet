@@ -1,0 +1,29 @@
+Packet format (60 bytes, not including the standard 4 byte header):
+    - 1 byte: packet type (1 bit forwarding, )
+    - 1 byte: packet ID
+    - 1 byte: packet origin
+    - 1 byte: packet destination
+    - 4 bytes: packet timestamp (reserved)
+    - 1 byte: payload type (i.e. temperature)
+    - 1 byte: payload device ID (i.e., RFM temperature vs. pico temperature)
+    - Remaining: data - format defined by data type and data origin
+
+Node types:
+    - Base station
+    - Remote node
+
+Packet types:
+    - Command
+    - Response
+    - Telemetry - this is a modifier on the packet type
+    - Forward
+    - Discovery
+    - TOF estimation - Responds immediately after subsequent TOF packets. Used to estimate time difference. Must be in TOF mode for accuracy
+    - Time update
+
+Known Devices
+    - All nodes have a list of devices that they can directly send a packet to
+
+Sensing conops:
+    - Remote node R1 logs sensor readings at configurable frequency, storing those readings with timestamps
+    - Base station B1 sends a command to R1 to 
