@@ -26,6 +26,8 @@ with open("config.json") as f:
 
 node_id = config["id"]
 
+print("Running as", config["name"])
+
 components_config = config["components"]
 
 radio_config = None
