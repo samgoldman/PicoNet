@@ -37,7 +37,7 @@ class LedStrip(Component):
     def set_green_percent(self, value):
         self.green_pwm.duty_cycle = clamp_value(value)
 
-    def set_red_percent(self, value):
+    def set_blue_percent(self, value):
         self.blue_pwm.duty_cycle = clamp_value(value)
 
     def run_periodic(self):
@@ -48,7 +48,7 @@ class LedStrip(Component):
         if command == NOOP:
             pass
         elif command == SET_RED or command == SET_GREEN or command == SET_BLUE or command == SET_ALL:
-            (_, value, _) = struct.unpack('<BH47s')
+            (_, value, _) = struct.unpack('<BH47s', packet.payload)
             if command == SET_RED or command == SET_ALL:
                 self.set_red_percent(value)
             if command == SET_GREEN or command == SET_ALL:

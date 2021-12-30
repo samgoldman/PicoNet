@@ -16,7 +16,7 @@ class SerialLinux(Component):
 
     def send(self, packet: Packet):
         raw = packet.pack()
-        self.ser.write(raw, destination=packet.destination)
+        self.ser.write(raw)
         self.ser.flush()
 
     def run_periodic(self):

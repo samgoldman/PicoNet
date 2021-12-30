@@ -4,13 +4,18 @@ from component import Component
 
 class PacketManager():
 
-    def __init__(self, subscriptions):
+    def __init__(self, subscriptions, node):
         self.subscriptions = subscriptions
+        self.node = node
         self.received_packets = []
         self.outgoing_packets = []
 
     def queue_received_packet(self, packet: Packet):
-        self.received_packets.append(packet)
+        if packet.destination != self.node:
+            self.outgoing_packets.append(packet)
+            print("Forwarding packet...")
+        else:
+            self.received_packets.append(packet)
 
     def queue_outgoing_packet(self, packet: Packet):
         if packet.destination == -1: # Internal messages
@@ -35,15 +40,12 @@ class PacketManager():
                 for sub in comp_subs:
                     if sub["device_type"] == packet.payload_type and sub["device_id"] == packet.payload_device_id:
                         comp.process_packet(packet)
-                        print("Packet routed to ", comp)
                         return
-
-            print("Packet unclaimed!")
 
 _packet_manager_instance: PacketManager = None
 
-def get_packet_manager(subscriptions=None) -> PacketManager:
+def get_packet_manager(subscriptions=None, node=None) -> PacketManager:
     global _packet_manager_instance
     if _packet_manager_instance is None:
-        _packet_manager_instance = PacketManager(subscriptions)
+        _packet_manager_instance = PacketManager(subscriptions, node)
     return _packet_manager_instance

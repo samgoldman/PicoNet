@@ -48,7 +48,7 @@ if "peripherals" in config:
     for (name, peripheral_config) in peripherals_config.items():
         get_peripheral_manager().initialize_peripheral(name, peripheral_config)
 
-packet_manager = get_packet_manager(subscriptions)
+packet_manager = get_packet_manager(subscriptions, node_id)
 
 radio = None
 if not radio_config is None:

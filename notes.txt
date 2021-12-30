@@ -27,3 +27,20 @@ Known Devices
 Sensing conops:
     - Remote node R1 logs sensor readings at configurable frequency, storing those readings with timestamps
     - Base station B1 sends a command to R1 to 
+
+
+Components:
+    * Watchdog implementation
+    * OTA config updates
+    * OTA source updates
+    * Sensors
+
+
+Linux:
+    * MQTT & relevant commanding
+    * Data logging
+    * Pi zero?
+
+
+
+

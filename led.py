@@ -39,10 +39,8 @@ class Led(Component):
         if packet.payload[0] == 0x2A:
             if packet.payload[1] == 0:
                 self.led.value = False
-                print("LED off")
             elif packet.payload[1] == 1:
                 self.led.value = True
-                print("LED on")
 
     def get_subscriptions(self):
         return [{"device_type": self.device_type, "device_id": self.device_id}]
