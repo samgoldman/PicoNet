@@ -1,4 +1,3 @@
-from time import monotonic_ns
 from adafruit_rfm69 import RFM69
 import digitalio
 
@@ -13,6 +12,7 @@ RADIO_FREQ_MHZ = 915.0
 
 class Radio(Component):
     radio: RFM69
+    known_nodes: list
 
     def __init__(self, packet_manager: PacketManager, params: dict):
         radio_cs = digitalio.DigitalInOut(get_pin(params["cs"]))
@@ -22,9 +22,11 @@ class Radio(Component):
         radio_reset.direction = digitalio.Direction.OUTPUT
 
         self.node = params["node"]
+        self.known_nodes = params["known_nodes"]
 
         self.packet_manager = packet_manager
-        self.radio = RFM69(get_peripheral_manager().get_peripheral(params["spi"]), radio_cs, radio_reset, RADIO_FREQ_MHZ, node=self.node)
+        self.radio = RFM69(get_peripheral_manager().get_peripheral(params["spi"]), radio_cs, radio_reset, RADIO_FREQ_MHZ)
+        self.radio.node = self.node
 
     def send(self, packet: Packet):
         raw = packet.pack()
@@ -35,7 +37,8 @@ class Radio(Component):
 
         if not packet is None:
             self.packet_manager.queue_received_packet(Packet.unpack(packet))
-        outgoing_packet = self.packet_manager.pop_outgoing_packet()
+
+        outgoing_packet = self.packet_manager.pop_outgoing_packet(self.known_nodes)
         if not outgoing_packet is None:
             self.send(outgoing_packet)
 

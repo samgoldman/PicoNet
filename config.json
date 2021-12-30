@@ -1,0 +1,23 @@
+{
+    "name": "test_node",
+    "id": 1,
+    "location": "",
+    "components": {
+        "serial": {
+            "type": "Serial Linux",
+            "params": {
+                "node": 0,
+                "known_nodes": [1],
+                "serial_port": "/dev/ttyACM1"
+            }
+        },
+        "strip_red": {
+            "type": "LED Commander",
+            "params": {
+                "device_id": 4,
+                "on": 1000000000,
+                "off": 10000000000
+            }
+        }
+    }
+}

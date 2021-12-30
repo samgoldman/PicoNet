@@ -1,8 +1,10 @@
 from packet import Packet
 from component import Component
+# from typing import List
 
 class PacketManager():
-    def __init__(self, subscriptions: list):
+
+    def __init__(self, subscriptions):
         self.subscriptions = subscriptions
         self.received_packets = []
         self.outgoing_packets = []
@@ -11,11 +13,17 @@ class PacketManager():
         self.received_packets.append(packet)
 
     def queue_outgoing_packet(self, packet: Packet):
-        self.outgoing_packets.append(packet)
+        if packet.destination == -1: # Internal messages
+            self.received_packets.append(packet)
+        else:
+            self.outgoing_packets.append(packet)
 
-    def pop_outgoing_packet(self) -> Packet:
-        if len(self.outgoing_packets) != 0:
-            return self.outgoing_packets.pop()
+    def pop_outgoing_packet(self, known_nodes) -> Packet:
+        for i in range(len(self.outgoing_packets)):
+            if self.outgoing_packets[i].destination in known_nodes:
+                packet = self.outgoing_packets.pop(i)
+                return packet
+
         return None
 
     def run_periodic(self):
