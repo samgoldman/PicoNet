@@ -31,15 +31,24 @@ Sensing conops:
 
 Components:
     * Watchdog implementation
-    * OTA config updates
-    * OTA source updates
+    * FS manager:
+        * OTA config updates
+        * OTA source updates
     * Sensors
-
+    * Telemetry manager - perhaps not actually a component - stores telemetry for retrieval
+    * Reboot manager
+    * Component manager
+    * TOF handler
+    * Time sync
 
 Linux:
     * MQTT & relevant commanding
     * Data logging
     * Pi zero?
+
+Improvements:
+    * Try-catch on non-critical Components
+    * Non-critical components don't restart when in safemode
 
 
 

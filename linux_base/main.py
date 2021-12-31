@@ -1,7 +1,8 @@
 import serial
 import struct
 import sys
-import time
+import json
+import paho.mqtt.client as mqtt
 
 TYPE_LED_STRIP = 0x02
 ### COMMMANDS ###
@@ -25,14 +26,32 @@ def generate_led_strip_command(node, device_id, command, value):
                                        value,
                                        b'\x00'*47)
     assert(len(data) == 60)
-
     return data
-
 
 ser = serial.Serial("/dev/ttyACM1")
 
-cmd = generate_led_strip_command(int(sys.argv[1]), 1, int(sys.argv[2]), int(sys.argv[3]))
+def on_message(client, userdata, msg):
+    if msg.topic == "/led_strips/cmd":
+        cmd = json.loads(msg.payload.decode("utf-8"))
+        pico_cmd = generate_led_strip_command(cmd["node"], 1, cmd["cmd"], cmd["value"])
+        ser.write(pico_cmd)
+    if msg.topic == "/led_strips_commander/shutdown":
+        ser.close()
+        exit()
 
-print(ser.write(cmd))
+def on_connect(client, userdata, flags, rc):
+    print("Connected with result code", rc)
 
-ser.close()
+    client.subscribe("/led_strips/#")
+    client.subscribe("/led_strips_commander/#")
+
+
+client = mqtt.Client(client_id="linux_led_strip_client_0")
+client.on_connect = on_connect
+client.on_message = on_message
+
+client.connect("10.0.0.31", 1883, 60)
+
+
+client.loop_forever()
+# ser.close()
