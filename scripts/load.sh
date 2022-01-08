@@ -1,6 +1,6 @@
 #!/bin/bash
 
-DEST='/media/sam/CIRCUITPY'
+DEST="/media/sam/$2"
 LIB_DEST="$DEST/lib"
 
 cp *.py $DEST

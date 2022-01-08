@@ -3,7 +3,7 @@ import digitalio
 
 from packet import Packet
 from component import Component
-from packet_manager import PacketManager
+from packet_manager import get_packet_manager
 from peripheral_manager import get_peripheral_manager
 from pin_map import get_pin
 
@@ -14,7 +14,7 @@ class Radio(Component):
     radio: RFM69
     known_nodes: list
 
-    def __init__(self, packet_manager: PacketManager, params: dict):
+    def __init__(self, params: dict):
         radio_cs = digitalio.DigitalInOut(get_pin(params["cs"]))
         radio_cs.direction = digitalio.Direction.OUTPUT
 
@@ -24,7 +24,7 @@ class Radio(Component):
         self.node = params["node"]
         self.known_nodes = params["known_nodes"]
 
-        self.packet_manager = packet_manager
+        self.packet_manager = get_packet_manager()
         self.radio = RFM69(get_peripheral_manager().get_peripheral(params["spi"]), radio_cs, radio_reset, RADIO_FREQ_MHZ)
         self.radio.node = self.node
 

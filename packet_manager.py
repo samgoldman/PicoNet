@@ -32,7 +32,7 @@ class PacketManager():
 
     def run_periodic(self):
         if len(self.received_packets) != 0:
-            packet = self.received_packets.pop()
+            packet = self.received_packets.pop(0) # FIFO
             for sub in self.subscriptions:
                 comp: Component = sub["component"]
                 comp_subs = sub["component_subscriptions"]
