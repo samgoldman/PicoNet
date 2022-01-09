@@ -1,4 +1,5 @@
 import json
+from struct import pack
 
 from node import Node
 from packet_manager import get_packet_manager
@@ -29,6 +30,9 @@ def init_component(config):
     elif config["type"] == "MqttClient":
         from mqtt_client import MqttClient
         return MqttClient(config["params"])
+    elif config["type"] == "FileManager":
+        from file_manager import FileManager
+        return FileManager(config["params"])
 
 with open("config.json") as f:
     config = json.load(f)
@@ -56,7 +60,9 @@ subscriptions = []
 for (name, component) in components.items():
     subscriptions.append({"component": component, "component_subscriptions": component.get_subscriptions()})
 
-packet_manager = get_packet_manager(subscriptions, node_id)
+packet_manager = get_packet_manager()
+packet_manager.node = node_id
+packet_manager.subscriptions = subscriptions
 
 node = Node(components, packet_manager)
 

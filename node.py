@@ -16,12 +16,12 @@ class Node():
     def process(self):
         try:
             self.packet_manager.run_periodic()
-        except:
-            pass # TODO: log/handle
+        except Exception as e:
+            print(f"Packet manager threw an exception: {e}")
 
         for (name, component) in self.components.items():
             try:
-                start_time = time.monotonic_ns()
                 component.run_periodic()
             except Exception as e:
                 print(f"Component '{name}' threw an exception: {e}")
+        # time.sleep(0.25)

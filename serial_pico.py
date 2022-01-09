@@ -14,6 +14,9 @@ class SerialPico(Component):
 
         self.ser = usb_cdc.data
         self.ser.timeout = 0
+       
+        _ = self.ser.read()
+        assert(self.ser.in_waiting == 0)
 
     def send(self, packet: Packet):
         raw = packet.pack()
