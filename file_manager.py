@@ -1,10 +1,20 @@
 from component import Component
 from packet import Packet
-from pin_map import get_pin
 from microcontroller import watchdog
-from watchdog import WatchDogMode
 
-TYPE_WATCHDOG = 0x03
+TYPE_FILE_MANAGER = 0x04
+
+COMMAND_NOOP   = 0x00
+# Upload commands
+COMMAND_RESET  = 0x01
+COMMAND_APPEND = 0x02
+COMMAND_SAVE   = 0x03
+# File manipulation commands
+COMMAND_REMOVE = 0x04
+COMMAND_RENAME = 0x05
+
+RESPONSE_OK       = 0x01
+RESPONSE_READONLY = 0x02
 
 class WatchdogManager(Component):
     def __init__(self, params: dict):
@@ -17,11 +27,6 @@ class WatchdogManager(Component):
             self.initialize()
 
         self.feed_count = 0
-
-    def initialize(self):
-        watchdog.timeout = self.timeout
-        watchdog.mode = WatchDogMode.RESET
-        self.initialized = True
 
     def run_periodic(self):
         if not self.initialized:

@@ -26,6 +26,9 @@ def init_component(config):
     elif config["type"] == "WatchdogManager":
         from watchdog_manager import WatchdogManager
         return WatchdogManager(config["params"])
+    elif config["type"] == "MqttClient":
+        from mqtt_client import MqttClient
+        return MqttClient(config["params"])
 
 with open("config.json") as f:
     config = json.load(f)

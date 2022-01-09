@@ -12,6 +12,7 @@ class PacketManager():
 
     def queue_received_packet(self, packet: Packet):
         if packet.destination != self.node:
+            print("Forwarding...")
             self.outgoing_packets.append(packet)
         else:
             self.received_packets.append(packet)
