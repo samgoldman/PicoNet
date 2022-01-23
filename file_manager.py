@@ -57,6 +57,9 @@ class FileManager(Component):
         pass
 
     def process_packet(self, packet: Packet):
+        if packet.payload[0] == COMMAND_REMOVE:
+            (filename, _) = convert_null_terminated_str(packet.payload[1:])
+            os.remove(self.root + filename)
         if packet.payload[0] == COMMAND_SAVE:
             transaction_id = packet.payload[1]
             crc = int.from_bytes(packet.payload[2:6], 'little')

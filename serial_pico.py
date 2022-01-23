@@ -1,4 +1,5 @@
 import usb_cdc
+import adafruit_logging
 
 from packet import Packet
 from component import Component
@@ -17,11 +18,14 @@ class SerialPico(Component):
        
         _ = self.ser.read()
         assert(self.ser.in_waiting == 0)
+        self.logger = adafruit_logging.getLogger('logger')
 
     def send(self, packet: Packet):
         raw = packet.pack()
-        self.ser.write(raw)
+        bytes_written = self.ser.write(raw)
+        self.logger.debug('Serial Pico: wrote %d bytes', bytes_written)
         self.ser.flush()
+        self.logger.debug('Serial Pico: flushed')
 
     def run_periodic(self):
         if self.ser.in_waiting >= 60:

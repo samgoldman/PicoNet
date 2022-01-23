@@ -1,7 +1,9 @@
 import time
+import traceback
 from packet import Packet
 from component import Component
 import os
+import adafruit_logging as logging
 
 TYPE_PACKET_MANAGER = 0x05
 
@@ -12,21 +14,28 @@ PACKET_TYPE_ACK_REQUESTED = 0x80
 TIMEOUT = 1000 #ns
 
 class PacketManager():
+    logger: logging.Logger
+
     def __init__(self):
         self.subscriptions = []
         self.node = None
         self.received_packets = []
         self.outgoing_packets = []
         self.sent_packets = []
+        self.logger = logging.getLogger('logger')
 
     def queue_received_packet(self, packet: Packet):
+        self.logger.debug("Received packet with ID %8x", packet.packet_id)
+
         if packet.destination != self.node:
             self.outgoing_packets.append(packet)
+            self.logger.info("Forwarding packet %8x", packet.packet_id)
         else:
             self.received_packets.append(packet)
-            # if packet.packet_type & PACKET_TYPE_ACK_REQUESTED > 0:
-            #     ack_packet = Packet(PACKET_TYPE_ACK, packet.packet_id, self.node, packet.origin, 0, 0, 0, 0)
-            #     self.queue_outgoing_packet(ack_packet)
+            if packet.packet_type & PACKET_TYPE_ACK_REQUESTED > 0:
+                self.logger.info("Queueing ACK for packet %8x", packet.packet_id)
+                ack_packet = Packet(PACKET_TYPE_ACK, packet.packet_id, self.node, packet.origin, 0, 0, 0, b'\x00'*Packet.get_max_payload_size())
+                self.queue_outgoing_packet(ack_packet)
 
     def queue_outgoing_packet(self, packet: Packet):
         if packet.destination == -1: # Internal messages
@@ -35,6 +44,8 @@ class PacketManager():
             if packet.packet_id is None:
                 packet.packet_id = int.from_bytes(os.urandom(4), 'big')
             packet.origin = self.node
+
+            self.logger.debug("Queueing outgoing packet %8x", packet.packet_id)
             self.outgoing_packets.append(packet)
 
     def pop_outgoing_packet(self, known_nodes) -> Packet:
@@ -52,7 +63,8 @@ class PacketManager():
             packet: Packet = self.received_packets.pop(0) # FIFO
             if packet.packet_type == PACKET_TYPE_ACK:
                 for i in range(len(self.sent_packets)):
-                    if self.sent_packets[i].packet_id == packet.packet_id:
+                    if self.sent_packets[i][0].packet_id == packet.packet_id:
+                        self.logger.debug("Received ACK for packet %8x, popping", packet.packet_id)
                         self.sent_packets.pop(i)
                         break
             else:
@@ -64,7 +76,10 @@ class PacketManager():
 
                     for sub in comp_subs:
                         if sub["device_type"] == packet.payload_type and sub["device_id"] == packet.payload_device_id:
-                            comp.process_packet(packet)
+                            try:
+                                comp.process_packet(packet)
+                            except Exception as e:
+                                self.logger.error("Packet Manager: component '%s' threw an exception ('%s'): \n%s", comp, e, ''.join(traceback.format_exception(None, e, e.__traceback__)))
                             return
 
 _packet_manager_instance: PacketManager = None

@@ -1,6 +1,7 @@
 import usb_cdc
 import microcontroller
 import os
+import storage
 
 # Boot setup
 
@@ -20,3 +21,7 @@ else:
 
 print(f"code.py found: {'YES' if file_exists_root('code.py') else 'NO'}")
 print(f"config.json found: {'YES' if file_exists_root('config.json') else 'NO'}")
+
+write_flag_found = file_exists_root('fs_write_flag')
+print(f"fs_write_flag found: {'YES' if write_flag_found else 'NO'}")
+storage.remount("/", not write_flag_found)

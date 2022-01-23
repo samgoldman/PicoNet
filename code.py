@@ -1,6 +1,6 @@
 import json
 from struct import pack
-
+import adafruit_logging as logging
 from node import Node
 from packet_manager import get_packet_manager
 
@@ -36,6 +36,23 @@ def init_component(config):
 
 with open("config.json") as f:
     config = json.load(f)
+
+# TODO: more in-depth logging system that allows different loggers for different instances
+logger = logging.getLogger('logger')
+level = config["log_level"]
+if level == "NONE":
+    logger.setLevel(logging.NOTSET)
+if level == "DEBUG":
+    logger.setLevel(logging.DEBUG)
+if level == "INFO":
+    logger.setLevel(logging.INFO)
+if level == "WARNING":
+    logger.setLevel(logging.WARNING)
+if level == "ERROR":
+    logger.setLevel(logging.ERROR)
+if level == "CRITICAL":
+    logger.setLevel(logging.CRITICAL)
+logger.info("Log level: %s", level)
 
 node_id = config["id"]
 

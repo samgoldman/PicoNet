@@ -47,7 +47,7 @@ class LedStrip(Component):
         if command == NOOP:
             pass
         elif command == SET_RED or command == SET_GREEN or command == SET_BLUE or command == SET_ALL:
-            (_, value, _) = struct.unpack('<BH47s', packet.payload)
+            (_, value, _) = struct.unpack('<BH44s', packet.payload)
             if command == SET_RED or command == SET_ALL:
                 self.set_red_percent(value)
             if command == SET_GREEN or command == SET_ALL:

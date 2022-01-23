@@ -24,4 +24,5 @@ class Node():
                 component.run_periodic()
             except Exception as e:
                 print(f"Component '{name}' threw an exception: {e}")
+                raise e
         # time.sleep(0.25)
