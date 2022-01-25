@@ -16,7 +16,7 @@ class SerialPico(Component):
         self.ser = usb_cdc.data
         self.ser.timeout = 0
        
-        _ = self.ser.read()
+        _ = self.ser.read(2048)
         assert(self.ser.in_waiting == 0)
         self.logger = adafruit_logging.getLogger('logger')
 

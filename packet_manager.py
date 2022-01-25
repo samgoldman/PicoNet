@@ -29,12 +29,12 @@ class PacketManager():
 
         if packet.destination != self.node:
             self.outgoing_packets.append(packet)
-            self.logger.info("Forwarding packet %8x", packet.packet_id)
+            self.logger.info("Forwarding packet %8x from node %d to node %d (is_ack=%s)", packet.packet_id, packet.origin, packet.destination, packet.packet_type == PACKET_TYPE_ACK)
         else:
             self.received_packets.append(packet)
             if packet.packet_type & PACKET_TYPE_ACK_REQUESTED > 0:
                 self.logger.info("Queueing ACK for packet %8x", packet.packet_id)
-                ack_packet = Packet(PACKET_TYPE_ACK, packet.packet_id, self.node, packet.origin, 0, 0, 0, b'\x00'*Packet.get_max_payload_size())
+                ack_packet = Packet(PACKET_TYPE_ACK, packet.packet_id, packet.origin, 0, 0, 0, b'\x00'*Packet.get_max_payload_size())
                 self.queue_outgoing_packet(ack_packet)
 
     def queue_outgoing_packet(self, packet: Packet):
@@ -43,16 +43,18 @@ class PacketManager():
         else:
             if packet.packet_id is None:
                 packet.packet_id = int.from_bytes(os.urandom(4), 'big')
-            packet.origin = self.node
+            
+            if packet.origin == -1:
+                packet.origin = self.node
 
-            self.logger.debug("Queueing outgoing packet %8x", packet.packet_id)
+            self.logger.debug("Queueing outgoing packet 0x%8x to node %d", packet.packet_id, packet.destination)
             self.outgoing_packets.append(packet)
 
     def pop_outgoing_packet(self, known_nodes) -> Packet:
         for i in range(len(self.outgoing_packets)):
             if self.outgoing_packets[i].destination in known_nodes:
                 packet = self.outgoing_packets.pop(i)
-                if packet.packet_type & PACKET_TYPE_ACK_REQUESTED > 0:
+                if packet.origin == self.node and packet.packet_type & PACKET_TYPE_ACK_REQUESTED > 0:
                     self.sent_packets.append((packet, time.monotonic_ns()))
                 return packet
 
@@ -81,6 +83,17 @@ class PacketManager():
                             except Exception as e:
                                 self.logger.error("Packet Manager: component '%s' threw an exception ('%s'): \n%s", comp, e, ''.join(traceback.format_exception(None, e, e.__traceback__)))
                             return
+
+        for i in range(len(self.sent_packets)):
+            entry = self.sent_packets[i]
+            packet: Packet = entry[0]
+            timestamp: int = entry[1]
+            elapsed = time.monotonic_ns() - timestamp
+            if elapsed > 100000000:
+                self.sent_packets.pop(i)
+                self.logger.info(f"Packet Manager: resending packet 0x{packet.packet_id:08x}")
+                self.queue_outgoing_packet(packet)
+                break
 
 _packet_manager_instance: PacketManager = None
 

@@ -71,7 +71,7 @@ for (name, component_config) in components_config.items():
         component = init_component(component_config)
         components[name] = component
     except Exception as e:
-        print(f"Component '{name}' failed to initialize with exception: {e} ({type(e)})")
+        logger.error(f"Component '{name}' failed to initialize with exception: {e} ({type(e)})")
 
 subscriptions = []
 for (name, component) in components.items():

@@ -9,7 +9,7 @@ class Packet():
     def get_max_payload_size():
         return 47
 
-    def __init__(self, packet_type, packet_id, origin, destination, timestamp, payload_type, payload_device_id, payload):
+    def __init__(self, packet_type, packet_id, destination, timestamp, payload_type, payload_device_id, payload, origin=-1):
         self.packet_type = packet_type
         self.packet_id = packet_id
         self.origin = origin
@@ -28,7 +28,7 @@ class Packet():
          payload_type, 
          payload_device_id, 
          payload) = struct.unpack(PACKING_FORMAT, data)
-        return Packet(packet_type, packet_id, origin, destination, timestamp, payload_type, payload_device_id, payload)
+        return Packet(packet_type, packet_id, destination, timestamp, payload_type, payload_device_id, payload, origin=origin)
 
     def pack(self):
         return struct.pack(PACKING_FORMAT, self.packet_type, 

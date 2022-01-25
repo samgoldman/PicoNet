@@ -1,4 +1,5 @@
 import time
+import adafruit_logging
 from component import Component
 from packet import Packet
 import os
@@ -52,13 +53,27 @@ class FileManager(Component):
     def __init__(self, params: dict):
         self.root = params["root"]
         self.node = params["node"]
+        self.logger = adafruit_logging.getLogger('logger')
 
     def run_periodic(self):
         pass
 
     def process_packet(self, packet: Packet):
+        if packet.payload[0] == RESPONSE_NOFILE:
+            self.logger.info("File manager go response 'NOFILE'")
         if packet.payload[0] == COMMAND_REMOVE:
             (filename, _) = convert_null_terminated_str(packet.payload[1:])
+
+            search_dir = self.root + os.sep.join(filename.split(os.sep)[0:-1])
+            if not (filename.split(os.sep)[-1] in os.listdir(search_dir)):
+                get_packet_manager().queue_outgoing_packet(Packet(PACKET_TYPE_DATA,
+                                                                  None,
+                                                                  packet.origin,
+                                                                  0,
+                                                                  0x04,
+                                                                  0,
+                                                                  bytes([RESPONSE_NOFILE, 0x00]) + b'\x00'*45,
+                                                                  origin=packet.destination))
             os.remove(self.root + filename)
         if packet.payload[0] == COMMAND_SAVE:
             transaction_id = packet.payload[1]
@@ -77,8 +92,6 @@ class FileManager(Component):
             data = packet.payload[7:7+num_bytes]
             crc = int.from_bytes(packet.payload[43:], 'little')
 
-            print(f"Received packet ({seq}) with CRC {crc:08x} and expected CRC {int.from_bytes(crc32(data), 'little'):08x}")
-
             if not transaction_id in self.ongoing_file_receptions:
                 self.ongoing_file_receptions[transaction_id] = b''
 
@@ -91,9 +104,8 @@ class FileManager(Component):
 
             payload = bytes([COMMAND_DOWNLOAD]) + transaction_id + params
 
-            get_packet_manager().queue_outgoing_packet(Packet(PACKET_TYPE_DATA,
+            get_packet_manager().queue_outgoing_packet(Packet(PACKET_TYPE_DATA | PACKET_TYPE_ACK_REQUESTED,
                                                                 None,
-                                                                self.node,
                                                                 destination,
                                                                 0,
                                                                 0x04,
@@ -107,15 +119,14 @@ class FileManager(Component):
 
             search_dir = self.root + os.sep.join(src_filename.split(os.sep)[0:-1])
             if not (src_filename.split(os.sep)[-1] in os.listdir(search_dir)):
-                print(f"Couldn't find {src_filename} in {search_dir}")
                 get_packet_manager().queue_outgoing_packet(Packet(PACKET_TYPE_DATA,
                                                                   None,
-                                                                  packet.destination,
                                                                   packet.origin,
                                                                   0,
                                                                   0x04,
                                                                   0,
-                                                                  bytes([RESPONSE_NOFILE, transaction_id]) + b'\x00'*45))
+                                                                  bytes([RESPONSE_NOFILE, transaction_id]) + b'\x00'*45,
+                                                                  origin=packet.destination))
             else:
                 with open(self.root + src_filename, 'rb') as fin:
                     transaction_id = int.from_bytes(os.urandom(1), 'little')
@@ -137,28 +148,28 @@ class FileManager(Component):
                         try:
                             payload = bytes([COMMAND_APPEND, transaction_id]) + int.to_bytes(i, 4, 'little') + bytes([byte_count]) + data + int.to_bytes(crc, 4, 'little')
 
-                            get_packet_manager().queue_outgoing_packet(Packet(PACKET_TYPE_DATA | PACKET_TYPE_ACK_REQUESTED,
+                            get_packet_manager().queue_outgoing_packet(Packet(PACKET_TYPE_DATA,
                                                                             None,
-                                                                            packet.destination,
                                                                             packet.origin,
                                                                             0,
                                                                             0x04,
                                                                             0,
-                                                                            payload))
+                                                                            payload,
+                                                                            origin=packet.destination))
                         except:
                             pass
 
                     full_crc = crc32(filedata)
-                    get_packet_manager().queue_outgoing_packet(Packet(PACKET_TYPE_DATA | PACKET_TYPE_ACK_REQUESTED,
+                    get_packet_manager().queue_outgoing_packet(Packet(PACKET_TYPE_DATA,
                                                                         None,
-                                                                        packet.destination,
                                                                         packet.origin,
                                                                         0,
                                                                         0x04,
                                                                         0,
                                                                         bytes([COMMAND_SAVE, transaction_id]) + 
                                                                           int.to_bytes(full_crc, 4, 'little') + 
-                                                                          bytes(dst_filename, 'utf-8')))
+                                                                          bytes(dst_filename, 'utf-8'),
+                                                                        origin=packet.destination))
 
     def get_subscriptions(self):
         return [{"device_type": TYPE_FILE_MANAGER, "device_id": 0}]

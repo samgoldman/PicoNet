@@ -42,7 +42,7 @@ class MqttClient(Component):
     def generate_led_strip_command(self, node, device_id, command: int, value: int):
         PACKING_FORMAT = "<BH44s"
         try:
-            packet = Packet(PACKET_TYPE_DATA | PACKET_TYPE_ACK_REQUESTED, None, 0, node, 0, TYPE_LED_STRIP, device_id, struct.pack(PACKING_FORMAT, command, value, b'\x00'*44))
+            packet = Packet(PACKET_TYPE_DATA | PACKET_TYPE_ACK_REQUESTED, None, node, 0, TYPE_LED_STRIP, device_id, struct.pack(PACKING_FORMAT, command, value, b'\x00'*44))
         except Exception as e:
             self.logger.error("MQTT Client: could not generate LED Strip packet: %s", str(e))
         return packet
@@ -60,18 +60,14 @@ class MqttClient(Component):
 
             payload = bytes([COMMAND_INITIATE_DOWNLOAD]) + b'\x00' + bytes([cmd["node"]]) + bytes(cmd["src"], 'utf-8') + b'\x00' + bytes(cmd["dst"], 'utf-8') + b'\x00'
             payload += (Packet.get_max_payload_size() - len(payload)) * b'\x00'
-            get_packet_manager().queue_outgoing_packet(Packet(PACKET_TYPE_DATA, None, 0, -1, 0, TYPE_FILE_MANAGER, 0, payload))
+            get_packet_manager().queue_outgoing_packet(Packet(PACKET_TYPE_DATA | PACKET_TYPE_ACK_REQUESTED, None, -1, 0, TYPE_FILE_MANAGER, 0, payload))
         if msg.topic == "/linux_base_station/remove_file":
             cmd = json.loads(msg.payload.decode("utf-8"))
             self.logger.debug("MQTT Client: received command %s", cmd)
             payload = bytes([COMMAND_REMOVE]) + bytes(cmd["src"], 'utf-8')
             payload += (Packet.get_max_payload_size() - len(payload)) * b'\x00'
 
-            try:
-                get_packet_manager().queue_outgoing_packet(Packet(PACKET_TYPE_DATA | PACKET_TYPE_ACK_REQUESTED, None, 0, cmd["node"], 0, TYPE_FILE_MANAGER, 0, payload))
-                
-            except Exception as e:
-                print(e)
+            get_packet_manager().queue_outgoing_packet(Packet(PACKET_TYPE_DATA | PACKET_TYPE_ACK_REQUESTED, None, cmd["node"], 0, TYPE_FILE_MANAGER, 0, payload))
 
 
     def run_periodic(self):
