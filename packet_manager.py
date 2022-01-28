@@ -89,7 +89,7 @@ class PacketManager():
             packet: Packet = entry[0]
             timestamp: int = entry[1]
             elapsed = time.monotonic_ns() - timestamp
-            if elapsed > 100000000:
+            if elapsed > 1000000000:
                 self.sent_packets.pop(i)
                 self.logger.info(f"Packet Manager: resending packet 0x{packet.packet_id:08x}")
                 self.queue_outgoing_packet(packet)

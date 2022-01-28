@@ -26,6 +26,7 @@ RESPONSE_READONLY = 0x08
 RESPONSE_NOFILE   = 0x09
 
 COMMAND_INITIATE_DOWNLOAD = 0x0A
+RESPONSE_ACK      = 0x0B
 
 # Payload formatting:
 # Byte      0: command/response
@@ -46,9 +47,101 @@ def convert_null_terminated_str(byte_str: bytes):
 
     return (byte_str[0:end].decode('utf-8'), end)
 
+class OutboundTransaction():
+    file_ = None
+    last_packet_: Packet
+    packet_count_: int
+    transaction_id_: int
+    origin_: int
+    destination_: int
+    done_: bool
+    destination_filename_: str
+    save_sent_: bool
+
+    def __init__(self, tid: int, input, origin: int, destination: int, destination_filename: str):
+        self.file_ = input
+        self.last_packet_ = None
+        self.packet_count_ = 0
+        self.done_ = False
+        self.transaction_id_ = tid
+        self.origin_ = origin
+        self.destination_ = destination
+        self.destination_filename_ = destination_filename
+        self.save_sent_ = False
+        self.logger = adafruit_logging.getLogger('logger')
+
+    def send_next_packet(self):
+        self.logger.debug('File Manager: Sending next packet')
+        data = self.file_.read(MAX_DATA_PER_PACKET)
+        
+        data_byte_count = len(data)
+        self.logger.debug(f'File Manager: Read {data_byte_count} bytes for new packet')
+
+        if data_byte_count < MAX_DATA_PER_PACKET:
+            self.done_ = True
+            self.logger.debug(f'File Manager: transaction {self.transaction_id_:08x} as done')
+
+        crc = crc32(data)
+
+        padded_data = data + b'\x00' * (MAX_DATA_PER_PACKET - data_byte_count)
+
+        self.packet_count_ += 1
+        sequence_counter = int.to_bytes(self.packet_count_, 4, 'little')
+        payload = bytes([COMMAND_APPEND, self.transaction_id_]) + sequence_counter + bytes([data_byte_count]) + padded_data + int.to_bytes(crc, 4, 'little')
+        self.logger.debug(f'File Manager: packet data for {self.transaction_id_:08x}: {data}')
+
+        packet = Packet(PACKET_TYPE_DATA,
+                        None,
+                        self.destination_,
+                        0,
+                        0x04,
+                        0,
+                        payload,
+                        origin=self.origin_)
+        self.last_packet_ = packet
+        self.last_sent_ = time.monotonic_ns()
+        get_packet_manager().queue_outgoing_packet(self.last_packet_)
+
+    def send_save(self):
+        self.logger.debug(f'File Manager: sending save for {self.transaction_id_:08x}')
+        packet = Packet(PACKET_TYPE_DATA,
+                        None,
+                        self.destination_,
+                        0,
+                        0x04,
+                        0,
+                        bytes([COMMAND_SAVE, self.transaction_id_]) + 
+                        int.to_bytes(0, 4, 'little') +  # TODO: implement full file CRC
+                        bytes(self.destination_filename_, 'utf-8'),
+                        origin=self.origin_)
+        self.last_packet_ = packet
+        self.last_sent_ = time.monotonic_ns()
+        self.save_sent_ = True
+        get_packet_manager().queue_outgoing_packet(self.last_packet_)
+
+    def resend_last_packet(self):
+        self.logger.debug(f'File Manager: resending last packet for {self.transaction_id_:08x}')
+        self.last_sent_ = time.monotonic_ns()
+        get_packet_manager().queue_outgoing_packet(self.last_packet_)
+
+    def resend_if_timeout(self):
+        curr_time = time.monotonic_ns()
+        if curr_time - self.last_sent_ >= 1000000000: # 1 sec
+            self.resend_last_packet()
+
+    def is_done(self) -> bool:
+        return self.done_
+
+    def save_sent(self) -> bool:
+        return self.save_sent_
+
+    def close(self):
+        self.file_.close()
+    
+
 class FileManager(Component):
-    ongoing_file_sends = {}
-    ongoing_file_receptions = {}
+    outgoing_transactions = {}
+    incoming_transactions = {}
 
     def __init__(self, params: dict):
         self.root = params["root"]
@@ -56,9 +149,28 @@ class FileManager(Component):
         self.logger = adafruit_logging.getLogger('logger')
 
     def run_periodic(self):
-        pass
+        for transaction in self.outgoing_transactions.values():
+            transaction.resend_if_timeout()
 
     def process_packet(self, packet: Packet):
+        if packet.payload[0] == RESPONSE_ACK:
+            transaction_id = packet.payload[1]
+            seq = int.from_bytes(packet.payload[2:6], 'little')
+            self.logger.debug(f'File Manager: ACK received for {transaction_id:08x}')
+            transaction: OutboundTransaction = self.outgoing_transactions[transaction_id]
+            if transaction.is_done():
+                if transaction.save_sent_ and seq == 0xffffffff:
+                    self.logger.debug(f'File Manager: ACK received for save, closing')
+                    transaction.close()
+                    del self.outgoing_transactions[transaction_id]
+                else:
+                    self.logger.debug(f'File Manager: ACK received when done, sending save')
+                    transaction.send_save()
+            else:
+                if seq == transaction.packet_count_:
+                    self.logger.debug(f'File Manager: ACK received, not done, sending next packet')
+                    transaction.send_next_packet()
+
         if packet.payload[0] == RESPONSE_NOFILE:
             self.logger.info("File manager go response 'NOFILE'")
         if packet.payload[0] == COMMAND_REMOVE:
@@ -77,25 +189,64 @@ class FileManager(Component):
             os.remove(self.root + filename)
         if packet.payload[0] == COMMAND_SAVE:
             transaction_id = packet.payload[1]
-            crc = int.from_bytes(packet.payload[2:6], 'little')
+            _crc = int.from_bytes(packet.payload[2:6], 'little')
             (filename, _) = convert_null_terminated_str(packet.payload[6:])
 
-            with(open(self.root + filename, 'wb')) as f:
-                f.write(self.ongoing_file_receptions[transaction_id])
-            
-            self.ongoing_file_receptions[transaction_id] = b''
+            if transaction_id in self.incoming_transactions and len(self.incoming_transactions[transaction_id]["data"]) != 0:
+
+                with(open(self.root + filename, 'wb')) as f:
+                    f.write(self.incoming_transactions[transaction_id]["data"])
+                
+                self.incoming_transactions[transaction_id] = {
+                    "data": b'',
+                    "seq": 0
+                }
+
+                payload = bytes([RESPONSE_ACK, transaction_id]) + int.to_bytes(0xffffffff, 4, 'little') 
+                payload += b'\x00' * (MAX_DATA_PER_PACKET - len(payload))
+
+                get_packet_manager().queue_outgoing_packet(Packet(PACKET_TYPE_DATA,
+                                                                    None,
+                                                                    packet.origin,
+                                                                    0,
+                                                                    0x04,
+                                                                    0,
+                                                                    payload))
+            else:
+                self.logger.warning(f"File Manager: received SAVE for non-existent transaction or empty transaction: 0x{transaction_id:08x}")
 
         if packet.payload[0] == COMMAND_APPEND:
             transaction_id = packet.payload[1]
             seq = int.from_bytes(packet.payload[2:6], 'little')
             num_bytes = packet.payload[6]
             data = packet.payload[7:7+num_bytes]
-            crc = int.from_bytes(packet.payload[43:], 'little')
+            expected_crc = int.from_bytes(packet.payload[43:], 'little')
+            data_crc = crc32(data)
 
-            if not transaction_id in self.ongoing_file_receptions:
-                self.ongoing_file_receptions[transaction_id] = b''
+            if expected_crc == data_crc:
+                if not transaction_id in self.incoming_transactions:
+                    self.incoming_transactions[transaction_id] = {
+                        "data": b'',
+                        "seq": 0
+                    }
 
-            self.ongoing_file_receptions[transaction_id] += data
+                if (self.incoming_transactions[transaction_id]["seq"] + 1) == seq:
+                    self.incoming_transactions[transaction_id]["data"] += data
+                    self.incoming_transactions[transaction_id]["seq"] = seq
+                else:
+                    self.logger.debug(f'File Manager: rejecting out sequence packet. Packet seq={seq}; last received seq={self.incoming_transactions[transaction_id]["seq"]}')
+
+                if self.incoming_transactions[transaction_id]["seq"] <= seq:
+                    payload = bytes([RESPONSE_ACK, transaction_id]) + int.to_bytes(seq, 4, 'little')
+                    payload += b'\x00' * (MAX_DATA_PER_PACKET - len(payload))
+
+                    get_packet_manager().queue_outgoing_packet(Packet(PACKET_TYPE_DATA,
+                                                                        None,
+                                                                        packet.origin,
+                                                                        0,
+                                                                        0x04,
+                                                                        0,
+                                                                        payload))
 
         if packet.payload[0] == COMMAND_INITIATE_DOWNLOAD:
             transaction_id = os.urandom(1)
@@ -104,7 +255,7 @@ class FileManager(Component):
 
             payload = bytes([COMMAND_DOWNLOAD]) + transaction_id + params
 
-            get_packet_manager().queue_outgoing_packet(Packet(PACKET_TYPE_DATA | PACKET_TYPE_ACK_REQUESTED,
+            get_packet_manager().queue_outgoing_packet(Packet(PACKET_TYPE_DATA,
                                                                 None,
                                                                 destination,
                                                                 0,
@@ -115,7 +266,7 @@ class FileManager(Component):
             transaction_id = packet.payload[1]
             params = packet.payload[2:]
             (src_filename, end) = convert_null_terminated_str(params)
-            (dst_filename, end2) = convert_null_terminated_str(params[end + 1:])
+            (dst_filename, _)   = convert_null_terminated_str(params[end + 1:])
 
             search_dir = self.root + os.sep.join(src_filename.split(os.sep)[0:-1])
             if not (src_filename.split(os.sep)[-1] in os.listdir(search_dir)):
@@ -128,48 +279,13 @@ class FileManager(Component):
                                                                   bytes([RESPONSE_NOFILE, transaction_id]) + b'\x00'*45,
                                                                   origin=packet.destination))
             else:
-                with open(self.root + src_filename, 'rb') as fin:
-                    transaction_id = int.from_bytes(os.urandom(1), 'little')
-                    filedata = fin.read()
-                    filesize = len(filedata)
+                file = open(self.root + src_filename, 'rb')
+                transaction_id = int.from_bytes(os.urandom(1), 'little')
 
-                    packet_count = ceil(filesize / float(MAX_DATA_PER_PACKET))
-
-                    for i in range(packet_count):
-                        lower_bound = i * MAX_DATA_PER_PACKET
-                        upper_bound = min(filesize, i * MAX_DATA_PER_PACKET + MAX_DATA_PER_PACKET)
-                        data = filedata[lower_bound:upper_bound]
-                        crc = crc32(data)
-                        byte_count = len(data)
-                        if byte_count < MAX_DATA_PER_PACKET:
-                            data += b'\x00' * (MAX_DATA_PER_PACKET - byte_count)
-                        assert(byte_count <= MAX_DATA_PER_PACKET)
-
-                        try:
-                            payload = bytes([COMMAND_APPEND, transaction_id]) + int.to_bytes(i, 4, 'little') + bytes([byte_count]) + data + int.to_bytes(crc, 4, 'little')
-
-                            get_packet_manager().queue_outgoing_packet(Packet(PACKET_TYPE_DATA,
-                                                                            None,
-                                                                            packet.origin,
-                                                                            0,
-                                                                            0x04,
-                                                                            0,
-                                                                            payload,
-                                                                            origin=packet.destination))
-                        except:
-                            pass
-
-                    full_crc = crc32(filedata)
-                    get_packet_manager().queue_outgoing_packet(Packet(PACKET_TYPE_DATA,
-                                                                        None,
-                                                                        packet.origin,
-                                                                        0,
-                                                                        0x04,
-                                                                        0,
-                                                                        bytes([COMMAND_SAVE, transaction_id]) + 
-                                                                          int.to_bytes(full_crc, 4, 'little') + 
-                                                                          bytes(dst_filename, 'utf-8'),
-                                                                        origin=packet.destination))
+                transaction = OutboundTransaction(transaction_id, file, packet.destination, packet.origin, dst_filename)
+                self.outgoing_transactions[transaction_id] = transaction
+                transaction.send_next_packet()
+                   
 
     def get_subscriptions(self):
         return [{"device_type": TYPE_FILE_MANAGER, "device_id": 0}]
