@@ -7,6 +7,7 @@ from crc import crc32
 from math import ceil
 
 from packet_manager import PACKET_TYPE_ACK_REQUESTED, PACKET_TYPE_DATA, get_packet_manager
+from utils import str_to_log_val
 
 TYPE_FILE_MANAGER = 0x04
 
@@ -48,6 +49,7 @@ def convert_null_terminated_str(byte_str: bytes):
     return (byte_str[0:end].decode('utf-8'), end)
 
 class OutboundTransaction():
+    logger_: adafruit_logging.Logger
     file_ = None
     last_packet_: Packet
     packet_count_: int
@@ -58,7 +60,7 @@ class OutboundTransaction():
     destination_filename_: str
     save_sent_: bool
 
-    def __init__(self, tid: int, input, origin: int, destination: int, destination_filename: str):
+    def __init__(self, tid: int, input, origin: int, destination: int, destination_filename: str, logger: adafruit_logging.Logger):
         self.file_ = input
         self.last_packet_ = None
         self.packet_count_ = 0
@@ -68,18 +70,18 @@ class OutboundTransaction():
         self.destination_ = destination
         self.destination_filename_ = destination_filename
         self.save_sent_ = False
-        self.logger = adafruit_logging.getLogger('logger')
+        self.logger_ = logger
 
     def send_next_packet(self):
-        self.logger.debug('File Manager: Sending next packet')
+        self.logger_.debug('File Manager: Sending next packet')
         data = self.file_.read(MAX_DATA_PER_PACKET)
         
         data_byte_count = len(data)
-        self.logger.debug(f'File Manager: Read {data_byte_count} bytes for new packet')
+        self.logger_.debug(f'File Manager: Read {data_byte_count} bytes for new packet')
 
         if data_byte_count < MAX_DATA_PER_PACKET:
             self.done_ = True
-            self.logger.debug(f'File Manager: transaction {self.transaction_id_:08x} as done')
+            self.logger_.debug(f'File Manager: transaction {self.transaction_id_:08x} as done')
 
         crc = crc32(data)
 
@@ -88,7 +90,6 @@ class OutboundTransaction():
         self.packet_count_ += 1
         sequence_counter = int.to_bytes(self.packet_count_, 4, 'little')
         payload = bytes([COMMAND_APPEND, self.transaction_id_]) + sequence_counter + bytes([data_byte_count]) + padded_data + int.to_bytes(crc, 4, 'little')
-        self.logger.debug(f'File Manager: packet data for {self.transaction_id_:08x}: {data}')
 
         packet = Packet(PACKET_TYPE_DATA,
                         None,
@@ -103,7 +104,7 @@ class OutboundTransaction():
         get_packet_manager().queue_outgoing_packet(self.last_packet_)
 
     def send_save(self):
-        self.logger.debug(f'File Manager: sending save for {self.transaction_id_:08x}')
+        self.logger_.debug(f'File Manager: sending save for {self.transaction_id_:08x}')
         packet = Packet(PACKET_TYPE_DATA,
                         None,
                         self.destination_,
@@ -120,7 +121,7 @@ class OutboundTransaction():
         get_packet_manager().queue_outgoing_packet(self.last_packet_)
 
     def resend_last_packet(self):
-        self.logger.debug(f'File Manager: resending last packet for {self.transaction_id_:08x}')
+        self.logger_.debug(f'File Manager: resending last packet for {self.transaction_id_:08x}')
         self.last_sent_ = time.monotonic_ns()
         get_packet_manager().queue_outgoing_packet(self.last_packet_)
 
@@ -140,13 +141,19 @@ class OutboundTransaction():
     
 
 class FileManager(Component):
+    logger: adafruit_logging.Logger
     outgoing_transactions = {}
     incoming_transactions = {}
 
     def __init__(self, params: dict):
         self.root = params["root"]
         self.node = params["node"]
-        self.logger = adafruit_logging.getLogger('logger')
+        if "logger" in params:
+            self.logger = adafruit_logging.getLogger(params["logger"]["name"])
+            if "level" in params["logger"]:
+                self.logger.setLevel(str_to_log_val(params["logger"]["level"]))
+        else:
+            self.logger = adafruit_logging.getLogger('logger')
 
     def run_periodic(self):
         for transaction in self.outgoing_transactions.values():
@@ -172,7 +179,7 @@ class FileManager(Component):
                     transaction.send_next_packet()
 
         if packet.payload[0] == RESPONSE_NOFILE:
-            self.logger.info("File manager go response 'NOFILE'")
+            self.logger.warning("File manager go response 'NOFILE'")
         if packet.payload[0] == COMMAND_REMOVE:
             (filename, _) = convert_null_terminated_str(packet.payload[1:])
 
@@ -213,7 +220,7 @@ class FileManager(Component):
                                                                     0,
                                                                     payload))
             else:
-                self.logger.warning(f"File Manager: received SAVE for non-existent transaction or empty transaction: 0x{transaction_id:08x}")
+                self.logger.warning(f"File Manager: received SAVE for non-existent transaction or empty transaction: 0x{transaction_id:02x}")
 
         if packet.payload[0] == COMMAND_APPEND:
             transaction_id = packet.payload[1]
@@ -234,7 +241,7 @@ class FileManager(Component):
                     self.incoming_transactions[transaction_id]["data"] += data
                     self.incoming_transactions[transaction_id]["seq"] = seq
                 else:
-                    self.logger.debug(f'File Manager: rejecting out sequence packet. Packet seq={seq}; last received seq={self.incoming_transactions[transaction_id]["seq"]}')
+                    self.logger.warning(f'File Manager: rejecting out sequence packet. Packet seq={seq}; last received seq={self.incoming_transactions[transaction_id]["seq"]}')
 
                 if self.incoming_transactions[transaction_id]["seq"] <= seq:
                     payload = bytes([RESPONSE_ACK, transaction_id]) + int.to_bytes(seq, 4, 'little')
@@ -282,7 +289,7 @@ class FileManager(Component):
                 file = open(self.root + src_filename, 'rb')
                 transaction_id = int.from_bytes(os.urandom(1), 'little')
 
-                transaction = OutboundTransaction(transaction_id, file, packet.destination, packet.origin, dst_filename)
+                transaction = OutboundTransaction(transaction_id, file, packet.destination, packet.origin, dst_filename, self.logger)
                 self.outgoing_transactions[transaction_id] = transaction
                 transaction.send_next_packet()
                    

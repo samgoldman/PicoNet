@@ -4,6 +4,7 @@ import adafruit_logging
 from packet import Packet
 from component import Component
 from packet_manager import get_packet_manager
+from utils import str_to_log_val
 
 class SerialPico(Component):
     ser: usb_cdc.Serial
@@ -18,7 +19,13 @@ class SerialPico(Component):
        
         _ = self.ser.read(2048)
         assert(self.ser.in_waiting == 0)
-        self.logger = adafruit_logging.getLogger('logger')
+        
+        if "logger" in params:
+            self.logger = adafruit_logging.getLogger(params["logger"]["name"])
+            if "level" in params["logger"]:
+                self.logger.setLevel(str_to_log_val(params["logger"]["level"]))
+        else:
+            self.logger = adafruit_logging.getLogger('logger')
 
     def send(self, packet: Packet):
         raw = packet.pack()

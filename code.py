@@ -1,8 +1,10 @@
 import json
 from struct import pack
+import traceback
 import adafruit_logging as logging
 from node import Node
 from packet_manager import get_packet_manager
+from utils import str_to_log_val
 
 
 def init_component(config):
@@ -40,30 +42,19 @@ with open("config.json") as f:
 # TODO: more in-depth logging system that allows different loggers for different instances
 logger = logging.getLogger('logger')
 level = config["log_level"]
-if level == "NONE":
-    logger.setLevel(logging.NOTSET)
-if level == "DEBUG":
-    logger.setLevel(logging.DEBUG)
-if level == "INFO":
-    logger.setLevel(logging.INFO)
-if level == "WARNING":
-    logger.setLevel(logging.WARNING)
-if level == "ERROR":
-    logger.setLevel(logging.ERROR)
-if level == "CRITICAL":
-    logger.setLevel(logging.CRITICAL)
+logger.setLevel(str_to_log_val(level))
 logger.info("Log level: %s", level)
 
 node_id = config["id"]
 
 components_config = config["components"]
 
-if "peripherals" in config:
+if "peripheral_manager" in config:
     from peripheral_manager import get_peripheral_manager
 
-    peripherals_config = config["peripherals"]
-    for (name, peripheral_config) in peripherals_config.items():
-        get_peripheral_manager().initialize_peripheral(name, peripheral_config)
+    peripherals_config = config["peripheral_manager"]
+    for (name, peripheral_config) in peripherals_config["peripherals"].items():
+        get_peripheral_manager(peripherals_config["params"]).initialize_peripheral(name, peripheral_config)
 
 components = {}
 for (name, component_config) in components_config.items():
@@ -71,13 +62,13 @@ for (name, component_config) in components_config.items():
         component = init_component(component_config)
         components[name] = component
     except Exception as e:
-        logger.error(f"Component '{name}' failed to initialize with exception: {e} ({type(e)})")
+        logger.error(f"Component '{name}' failed to initialize with exception: {e} ({type(e)}): : \n{''.join(traceback.format_exception(None, e, e.__traceback__)):s}")
 
 subscriptions = []
 for (name, component) in components.items():
     subscriptions.append({"component": component, "component_subscriptions": component.get_subscriptions()})
 
-packet_manager = get_packet_manager()
+packet_manager = get_packet_manager(config["packet_manager"]["params"])
 packet_manager.node = node_id
 packet_manager.subscriptions = subscriptions
 

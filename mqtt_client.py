@@ -7,6 +7,8 @@ import struct
 import json
 import paho.mqtt.client as mqtt
 
+from utils import str_to_log_val
+
 TYPE_MQTT_CLIENT = 0x03
 
 
@@ -32,7 +34,13 @@ class MqttClient(Component):
         self.on_connect(None, None, 0)
 
         self.client.loop_start()
-        self.logger = adafruit_logging.getLogger('logger')
+        
+        if "logger" in params:
+            self.logger = adafruit_logging.getLogger(params["logger"]["name"])
+            if "level" in params["logger"]:
+                self.logger.setLevel(str_to_log_val(params["logger"]["level"]))
+        else:
+            self.logger = adafruit_logging.getLogger('logger')
 
     def on_connect(self, userdata, flags, rc):
         self.client.subscribe("/led_strips/#")

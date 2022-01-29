@@ -7,6 +7,7 @@ from component import Component
 from packet_manager import get_packet_manager
 from peripheral_manager import get_peripheral_manager
 from pin_map import get_pin
+from utils import str_to_log_val
 
 
 RADIO_FREQ_MHZ = 915.0
@@ -25,9 +26,13 @@ class Radio(Component):
         self.node = params["node"]
         self.known_nodes = params["known_nodes"]
 
-        self.logger = adafruit_logging.getLogger('logger')
+        if "logger" in params:
+            self.logger = adafruit_logging.getLogger(params["logger"]["name"])
+            if "level" in params["logger"]:
+                self.logger.setLevel(str_to_log_val(params["logger"]["level"]))
+        else:
+            self.logger = adafruit_logging.getLogger('logger')
 
-        self.packet_manager = get_packet_manager()
         self.radio = RFM69(get_peripheral_manager().get_peripheral(params["spi"]), radio_cs, radio_reset, RADIO_FREQ_MHZ)
         self.radio.node = self.node
 
@@ -51,16 +56,16 @@ class Radio(Component):
             self.logger.debug("Radio: sent packet with id 0x%04x", packet.packet_id)
 
     def run_periodic(self):
-        packet = self.radio.receive(timeout=.5)
+        packet = self.radio.receive(timeout=.1)
 
         if not packet is None:
             self.logger.debug("Radio: attempting to unpack packet")
             unpacked = Packet.unpack(packet)
             self.logger.debug("Radio: received a packet with id 0x%08x", unpacked.packet_id)
-            self.packet_manager.queue_received_packet(unpacked)
+            get_packet_manager().queue_received_packet(unpacked)
             self.logger.debug("Radio: RSSI=%f", self.radio.rssi)
 
-        outgoing_packet = self.packet_manager.pop_outgoing_packet(self.known_nodes)
+        outgoing_packet = get_packet_manager().pop_outgoing_packet(self.known_nodes)
         if not outgoing_packet is None:
             self.send(outgoing_packet)
 
